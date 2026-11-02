@@ -3,11 +3,11 @@
 [日本語版はこちら](README.ja.md)
 
 A macOS menu-bar app that shows several time zones side by side in small type.
-Each clock is a two-line item (label on top, time below) in 24-hour format.
+Each clock is a two-line item (label on top, time below), in 24-hour format by default.
 
 ```
- LA   UTC   JP
-05:45 13:45 22:45
+ UTC   JP    LA
+13:45 22:45 05:45
 ```
 
 ## Features
@@ -20,8 +20,9 @@ Each clock is a two-line item (label on top, time below) in 24-hour format.
   - Pick a time zone by searching (e.g. "Tokyo", "Los Angeles")
   - Adjust time size (small / medium / large), label size and spacing
 - Optional launch at login
-- Starts with three clocks: LA / UTC / JP
-- The app's UI is in Japanese only
+- UI in Japanese or English: follows the macOS language by default (Japanese if macOS is Japanese, English otherwise), and can be switched in Settings
+- 24-hour or 12-hour (AM/PM) time format, switchable in Settings
+- Starts with three clocks, left to right: UTC / JP / LA
 
 ## Requirements
 

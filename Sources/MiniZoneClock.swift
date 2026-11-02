@@ -16,10 +16,29 @@ struct ClockEntry: Codable, Identifiable, Equatable {
     var timeZone: TimeZone { TimeZone(identifier: timeZoneID) ?? .current }
 }
 
+/// 実際に使う表示言語
+enum Lang {
+    case ja, en
+    var locale: Locale { Locale(identifier: self == .ja ? "ja_JP" : "en_US") }
+}
+
+/// 設定で選ぶ言語。system は OS の言語に従う（日本語なら日本語、それ以外は英語）。
+enum LanguageSetting: String, CaseIterable, Identifiable {
+    case system, ja, en
+    var id: String { rawValue }
+    var resolved: Lang {
+        switch self {
+        case .ja: return .ja
+        case .en: return .en
+        case .system: return (Locale.preferredLanguages.first ?? "").hasPrefix("ja") ? .ja : .en
+        }
+    }
+}
+
 enum TextSize: Int, CaseIterable, Identifiable {
     case small, medium, large
     var id: Int { rawValue }
-    var title: String { ["小", "中", "大"][rawValue] }
+    func title(_ lang: Lang) -> String { (lang == .ja ? ["小", "中", "大"] : ["S", "M", "L"])[rawValue] }
     var labelPoint: CGFloat { [7, 8, 9][rawValue] }
     var timePoint: CGFloat { [10, 11, 12.5][rawValue] }
 }
@@ -29,6 +48,8 @@ final class ClockStore: ObservableObject {
     private let sizeKey = "textSize"
     private let gapKey = "gap"
     private let labelPointKey = "labelPoint"
+    private let languageKey = "language"
+    private let hour24Key = "hour24"
 
     var onChange: (() -> Void)?
 
@@ -37,6 +58,13 @@ final class ClockStore: ObservableObject {
     }
     @Published var textSize: TextSize {
         didSet { UserDefaults.standard.set(textSize.rawValue, forKey: sizeKey); onChange?() }
+    }
+    @Published var language: LanguageSetting {
+        didSet { UserDefaults.standard.set(language.rawValue, forKey: languageKey); onChange?() }
+    }
+    /// true: 24時間表記 / false: 12時間表記（AM/PM）
+    @Published var use24Hour: Bool {
+        didSet { UserDefaults.standard.set(use24Hour, forKey: hour24Key); onChange?() }
     }
     /// ラベルの文字の大きさ（ポイント）
     @Published var labelPoint: Double {
@@ -54,15 +82,22 @@ final class ClockStore: ObservableObject {
             clocks = saved
         } else {
             clocks = [
-                ClockEntry(label: "LA", timeZoneID: "America/Los_Angeles"),
                 ClockEntry(label: "UTC", timeZoneID: "UTC"),
                 ClockEntry(label: "JP", timeZoneID: "Asia/Tokyo"),
+                ClockEntry(label: "LA", timeZoneID: "America/Los_Angeles"),
             ]
         }
         textSize = TextSize(rawValue: d.integer(forKey: sizeKey)) ?? .small
         gap = d.object(forKey: gapKey) as? Double ?? 6
         labelPoint = d.object(forKey: labelPointKey) as? Double ?? 8.5
+        language = LanguageSetting(rawValue: d.string(forKey: languageKey) ?? "") ?? .system
+        use24Hour = d.object(forKey: hour24Key) as? Bool ?? true
     }
+
+    var lang: Lang { language.resolved }
+
+    /// 表示言語に合わせて文字列を選ぶ
+    func t(_ ja: String, _ en: String) -> String { lang == .ja ? ja : en }
 
     private func save() {
         if let data = try? JSONEncoder().encode(clocks) {
@@ -92,25 +127,32 @@ enum Fmt {
     private static var timeCache: [String: DateFormatter] = [:]
     private static var detailCache: [String: DateFormatter] = [:]
 
-    static func time(_ date: Date, in tz: TimeZone) -> String {
-        let f = timeCache[tz.identifier] ?? {
+    static func time(_ date: Date, in tz: TimeZone, use24Hour: Bool) -> String {
+        let cacheKey = "\(tz.identifier)|\(use24Hour)"
+        let f = timeCache[cacheKey] ?? {
             let f = DateFormatter()
             f.locale = Locale(identifier: "en_US_POSIX")
-            f.dateFormat = "HH:mm"
+            f.dateFormat = use24Hour ? "HH:mm" : "h:mm a"
             f.timeZone = tz
-            timeCache[tz.identifier] = f
+            timeCache[cacheKey] = f
             return f
         }()
         return f.string(from: date)
     }
 
-    static func detail(_ date: Date, in tz: TimeZone) -> String {
-        let f = detailCache[tz.identifier] ?? {
+    static func detail(_ date: Date, in tz: TimeZone, lang: Lang, use24Hour: Bool) -> String {
+        let cacheKey = "\(tz.identifier)|\(lang)|\(use24Hour)"
+        let f = detailCache[cacheKey] ?? {
             let f = DateFormatter()
-            f.locale = Locale(identifier: "ja_JP")
-            f.dateFormat = "M/d(E) HH:mm"
+            f.locale = lang.locale
+            switch (lang, use24Hour) {
+            case (.ja, true):  f.dateFormat = "M/d(E) HH:mm"
+            case (.ja, false): f.dateFormat = "M/d(E) a h:mm"
+            case (.en, true):  f.dateFormat = "EEE M/d HH:mm"
+            case (.en, false): f.dateFormat = "EEE M/d h:mm a"
+            }
             f.timeZone = tz
-            detailCache[tz.identifier] = f
+            detailCache[cacheKey] = f
             return f
         }()
         return f.string(from: date)
@@ -124,15 +166,15 @@ enum Fmt {
         return m == 0 ? "UTC\(sign)\(h)" : String(format: "UTC%@%d:%02d", sign, h, m)
     }
 
-    static func japaneseName(_ tz: TimeZone) -> String {
-        tz.localizedName(for: .generic, locale: Locale(identifier: "ja_JP")) ?? ""
+    static func localizedName(_ tz: TimeZone, lang: Lang) -> String {
+        tz.localizedName(for: .generic, locale: lang.locale) ?? ""
     }
 }
 
 // MARK: - メニューバー画像
 
 enum Renderer {
-    static func image(clocks: [ClockEntry], date: Date, size: TextSize, labelPoint: CGFloat, gap: CGFloat, height: CGFloat) -> NSImage {
+    static func image(clocks: [ClockEntry], date: Date, use24Hour: Bool, size: TextSize, labelPoint: CGFloat, gap: CGFloat, height: CGFloat) -> NSImage {
         let labelFont = NSFont.systemFont(ofSize: labelPoint, weight: .semibold)
         let timeFont = NSFont.monospacedDigitSystemFont(ofSize: size.timePoint, weight: .regular)
         let labelAttr: [NSAttributedString.Key: Any] = [.font: labelFont, .foregroundColor: NSColor.black]
@@ -141,7 +183,7 @@ enum Renderer {
         struct Col { let label: NSString; let time: NSString; let ls: CGSize; let ts: CGSize; let w: CGFloat }
         let cols: [Col] = clocks.map { c in
             let l = c.label as NSString
-            let t = Fmt.time(date, in: c.timeZone) as NSString
+            let t = Fmt.time(date, in: c.timeZone, use24Hour: use24Hour) as NSString
             let ls = l.size(withAttributes: labelAttr)
             let ts = t.size(withAttributes: timeAttr)
             return Col(label: l, time: t, ls: ls, ts: ts, w: ceil(max(ls.width, ts.width)))
@@ -185,11 +227,11 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("時計（左から順に表示）").font(.headline)
+            Text(store.t("時計（左から順に表示）", "Clocks (shown left to right)")).font(.headline)
 
             ForEach(store.clocks) { clock in
                 HStack(spacing: 8) {
-                    TextField("ラベル", text: labelBinding(clock.id))
+                    TextField(store.t("ラベル", "Label"), text: labelBinding(clock.id))
                         .frame(width: 64)
                     Button {
                         ui.query = ""
@@ -200,48 +242,64 @@ struct SettingsView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     Button { store.move(clock.id, by: -1) } label: { Image(systemName: "chevron.left") }
-                        .help("左へ")
+                        .help(store.t("左へ", "Move left"))
                     Button { store.move(clock.id, by: 1) } label: { Image(systemName: "chevron.right") }
-                        .help("右へ")
+                        .help(store.t("右へ", "Move right"))
                     Button { store.remove(clock.id) } label: { Image(systemName: "minus.circle") }
-                        .help("削除")
+                        .help(store.t("削除", "Remove"))
                 }
             }
 
             Button {
                 store.add()
             } label: {
-                Label("時計を追加", systemImage: "plus")
+                Label(store.t("時計を追加", "Add clock"), systemImage: "plus")
             }
 
             Divider()
 
-            Picker("時刻の大きさ", selection: $store.textSize) {
-                ForEach(TextSize.allCases) { Text($0.title).tag($0) }
+            Picker(store.t("時刻の大きさ", "Time size"), selection: $store.textSize) {
+                ForEach(TextSize.allCases) { Text($0.title(store.lang)).tag($0) }
             }
             .pickerStyle(.segmented)
             .frame(width: 260)
 
+            Picker(store.t("時刻の表記", "Time format"), selection: $store.use24Hour) {
+                Text(store.t("24時間", "24-hour")).tag(true)
+                Text(store.t("12時間（AM/PM）", "12-hour (AM/PM)")).tag(false)
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 360)
+
             HStack {
-                Text("ラベルの大きさ")
+                Text(store.t("ラベルの大きさ", "Label size"))
                 Slider(value: $store.labelPoint, in: 6...11, step: 0.5).frame(width: 160)
                 Text(String(format: "%.1fpt", store.labelPoint)).monospacedDigit().foregroundColor(.secondary)
             }
 
             HStack {
-                Text("時計の間隔")
+                Text(store.t("時計の間隔", "Spacing"))
                 Slider(value: $store.gap, in: 2...16, step: 1).frame(width: 160)
                 Text("\(Int(store.gap))pt").monospacedDigit().foregroundColor(.secondary)
             }
 
-            Text("ラベルは「LA」「JP」のように短くすると幅が小さくなります。")
+            Picker(store.t("言語", "Language"), selection: $store.language) {
+                Text(store.t("自動（OS）", "Auto (system)")).tag(LanguageSetting.system)
+                Text("日本語").tag(LanguageSetting.ja)
+                Text("English").tag(LanguageSetting.en)
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 360)
+
+            Text(store.t("ラベルは「LA」「JP」のように短くすると幅が小さくなります。",
+                         "Short labels like \"LA\" or \"JP\" keep the menu bar narrow."))
                 .font(.caption)
                 .foregroundColor(.secondary)
         }
         .padding(20)
         .frame(width: 480)
         .sheet(item: $ui.picking) { target in
-            TimeZonePicker(ui: ui, current: store.clocks.first(where: { $0.id == target.id })?.timeZoneID ?? "") { picked in
+            TimeZonePicker(ui: ui, lang: store.lang, current: store.clocks.first(where: { $0.id == target.id })?.timeZoneID ?? "") { picked in
                 if let i = store.clocks.firstIndex(where: { $0.id == target.id }) {
                     store.clocks[i].timeZoneID = picked
                 }
@@ -263,6 +321,7 @@ struct SettingsView: View {
 
 struct TimeZonePicker: View {
     @ObservedObject var ui: SettingsUI
+    let lang: Lang
     let current: String
     let onPick: (String) -> Void
 
@@ -279,7 +338,7 @@ struct TimeZonePicker: View {
         guard !q.isEmpty else { return Self.all }
         return Self.all.filter { id in
             guard let tz = TimeZone(identifier: id) else { return false }
-            let hay = "\(id) \(Fmt.japaneseName(tz)) \(tz.abbreviation() ?? "")"
+            let hay = "\(id) \(Fmt.localizedName(tz, lang: lang)) \(tz.abbreviation() ?? "")"
                 .lowercased()
                 .replacingOccurrences(of: "_", with: " ")
             return hay.contains(q.replacingOccurrences(of: "_", with: " "))
@@ -288,8 +347,8 @@ struct TimeZonePicker: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("地域を選ぶ").font(.headline)
-            TextField("検索（例: Tokyo, Los Angeles, 太平洋, UTC）", text: $ui.query)
+            Text(lang == .ja ? "地域を選ぶ" : "Choose a time zone").font(.headline)
+            TextField(lang == .ja ? "検索（例: Tokyo, Los Angeles, 太平洋, UTC）" : "Search (e.g. Tokyo, Los Angeles, Pacific, UTC)", text: $ui.query)
                 .textFieldStyle(.roundedBorder)
             List(filtered, id: \.self) { id in
                 Button {
@@ -299,7 +358,7 @@ struct TimeZonePicker: View {
                     HStack {
                         Text(id).fontWeight(id == current ? .bold : .regular)
                         if let tz = TimeZone(identifier: id) {
-                            Text(Fmt.japaneseName(tz)).foregroundColor(.secondary)
+                            Text(Fmt.localizedName(tz, lang: lang)).foregroundColor(.secondary)
                             Spacer()
                             Text(Fmt.offset(tz)).monospacedDigit().foregroundColor(.secondary)
                         }
@@ -310,7 +369,7 @@ struct TimeZonePicker: View {
             }
             HStack {
                 Spacer()
-                Button("キャンセル") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(lang == .ja ? "キャンセル" : "Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
             }
         }
         .padding(16)
@@ -337,7 +396,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.menu = menu
 
         store.onChange = { [weak self] in
-            DispatchQueue.main.async { self?.refresh(force: true) }
+            DispatchQueue.main.async {
+                self?.refresh(force: true)
+                if let self { self.settingsWindow?.title = self.settingsTitle }
+            }
         }
 
         refresh(force: true)
@@ -354,9 +416,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func tick() { refresh(force: false) }
 
+    private var settingsTitle: String { store.t("MiniZoneClock の設定", "MiniZoneClock Settings") }
+
     private func refresh(force: Bool) {
         let now = Date()
-        let key = store.clocks.map { "\($0.label)|\(Fmt.time(now, in: $0.timeZone))" }.joined(separator: ",")
+        let key = store.clocks.map { "\($0.label)|\(Fmt.time(now, in: $0.timeZone, use24Hour: store.use24Hour))" }.joined(separator: ",")
             + "|\(store.textSize.rawValue)|\(store.labelPoint)|\(store.gap)"
         guard force || key != lastKey else { return }
         lastKey = key
@@ -371,7 +435,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         button.title = ""
         button.imagePosition = .imageOnly
         button.image = Renderer.image(
-            clocks: store.clocks, date: now, size: store.textSize, labelPoint: CGFloat(store.labelPoint),
+            clocks: store.clocks, date: now, use24Hour: store.use24Hour, size: store.textSize, labelPoint: CGFloat(store.labelPoint),
             gap: CGFloat(store.gap), height: NSStatusBar.system.thickness)
     }
 
@@ -381,31 +445,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let now = Date()
         for c in store.clocks {
             let tz = c.timeZone
-            let title = "\(c.label)    \(Fmt.detail(now, in: tz))    \(tz.abbreviation(for: now) ?? "") (\(Fmt.offset(tz, at: now)))"
+            let title = "\(c.label)    \(Fmt.detail(now, in: tz, lang: store.lang, use24Hour: store.use24Hour))    \(tz.abbreviation(for: now) ?? "") (\(Fmt.offset(tz, at: now)))"
             let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
             item.isEnabled = false
             menu.addItem(item)
         }
         if !store.clocks.isEmpty { menu.addItem(.separator()) }
 
-        let settings = NSMenuItem(title: "設定…", action: #selector(openSettings), keyEquivalent: ",")
+        let settings = NSMenuItem(title: store.t("設定…", "Settings…"), action: #selector(openSettings), keyEquivalent: ",")
         settings.target = self
         menu.addItem(settings)
 
-        let login = NSMenuItem(title: "ログイン時に起動", action: #selector(toggleLogin), keyEquivalent: "")
+        let login = NSMenuItem(title: store.t("ログイン時に起動", "Launch at Login"), action: #selector(toggleLogin), keyEquivalent: "")
         login.target = self
         login.state = SMAppService.mainApp.status == .enabled ? .on : .off
         menu.addItem(login)
 
         menu.addItem(.separator())
-        let quit = NSMenuItem(title: "終了", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let quit = NSMenuItem(title: store.t("終了", "Quit"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(quit)
     }
 
     @objc private func openSettings() {
         if settingsWindow == nil {
             let w = NSWindow(contentViewController: NSHostingController(rootView: SettingsView(store: store, ui: settingsUI)))
-            w.title = "MiniZoneClock の設定"
+            w.title = settingsTitle
             w.styleMask = [.titled, .closable]
             w.isReleasedWhenClosed = false
             w.center()
@@ -428,8 +492,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         } catch {
             let alert = NSAlert()
-            alert.messageText = "ログイン項目を変更できませんでした"
-            alert.informativeText = "アプリを「アプリケーション」フォルダに入れてから、もう一度試してください。\n\n\(error.localizedDescription)"
+            alert.messageText = store.t("ログイン項目を変更できませんでした", "Couldn't change the login item")
+            alert.informativeText = store.t("アプリを「アプリケーション」フォルダに入れてから、もう一度試してください。", "Move the app to the Applications folder and try again.") + "\n\n\(error.localizedDescription)"
             NSApp.activate(ignoringOtherApps: true)
             alert.runModal()
         }
