@@ -21,6 +21,7 @@ Each clock is a two-line item (label on top, time below) in 24-hour format.
   - Adjust time size (small / medium / large), label size and spacing
 - Optional launch at login
 - Starts with three clocks: LA / UTC / JP
+- The app's UI is in Japanese only
 
 ## Requirements
 
