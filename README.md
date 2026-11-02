@@ -1,0 +1,47 @@
+# MiniZoneClock
+
+[日本語版はこちら](README.ja.md)
+
+A macOS menu-bar app that shows several time zones side by side in small type.
+Each clock is a two-line item (label on top, time below) in 24-hour format.
+
+```
+ LA   UTC   JP
+05:45 13:45 22:45
+```
+
+## Features
+
+- Multiple clocks in the menu bar, each with a custom label (e.g. LA, UTC, JP)
+- Click the menu-bar clocks to see each zone's date, time and offset
+- Settings window:
+  - Add, remove and reorder clocks
+  - Edit labels
+  - Pick a time zone by searching (e.g. "Tokyo", "Los Angeles")
+  - Adjust time size (small / medium / large), label size and spacing
+- Optional launch at login
+- Starts with three clocks: LA / UTC / JP
+
+## Requirements
+
+- macOS 13 or later
+- Runs natively on Apple silicon (no Rosetta needed)
+- Swift compiler from the Xcode Command Line Tools (`xcode-select --install`)
+
+## Build
+
+```
+git clone https://github.com/yokodona/MiniZoneClock.git
+cd MiniZoneClock
+bash build.sh
+```
+
+The script compiles the app, installs it to `/Applications/MiniZoneClock.app` and launches it.
+
+## License
+
+[MIT](LICENSE)
+
+---
+
+Built with Claude.
