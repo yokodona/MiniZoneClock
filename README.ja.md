@@ -8,7 +8,17 @@
 05:45 13:45 22:45
 ```
 
-## インストール（最初の1回）
+## ダウンロードして使う場合
+
+[Releases](https://github.com/yokodona/MiniZoneClock/releases) から `MiniZoneClock-1.0-arm64.zip` をダウンロードし、解凍して `MiniZoneClock.app` を「アプリケーション」フォルダに移します（Apple シリコン専用）。
+
+Apple の公証を受けていないため、「開発元を検証できません」と出ることがあります。その場合は、アプリを右クリックして「開く」を選ぶか、ターミナルで次を実行してください。
+
+```
+xattr -cr /Applications/MiniZoneClock.app
+```
+
+## ビルドして使う場合（最初の1回）
 
 1. このフォルダ（`mini-zone-clock`）をMacにダウンロードします。
 2. ターミナルを開き、次のコマンドを実行します。

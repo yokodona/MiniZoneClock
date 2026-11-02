@@ -28,6 +28,16 @@ Each clock is a two-line item (label on top, time below) in 24-hour format.
 - Runs natively on Apple silicon (no Rosetta needed)
 - Swift compiler from the Xcode Command Line Tools (`xcode-select --install`)
 
+## Download
+
+Grab `MiniZoneClock-1.0-arm64.zip` from the [Releases](https://github.com/yokodona/MiniZoneClock/releases) page, unzip it and move `MiniZoneClock.app` to `/Applications`. Apple silicon only.
+
+The app is ad-hoc signed and not notarized, so macOS may say it cannot verify the developer. Either right-click the app and choose **Open**, or run:
+
+```
+xattr -cr /Applications/MiniZoneClock.app
+```
+
 ## Build
 
 ```
