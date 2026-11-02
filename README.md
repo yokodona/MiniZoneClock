@@ -26,7 +26,7 @@ Each clock is a two-line item (label on top, time below) in 24-hour format.
 
 - macOS 13 or later
 - Runs natively on Apple silicon (no Rosetta needed)
-- Swift compiler from the Xcode Command Line Tools (`xcode-select --install`)
+- To build from source only: the Swift compiler from the Xcode Command Line Tools (`xcode-select --install`)
 
 ## Download
 

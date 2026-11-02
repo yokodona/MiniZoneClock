@@ -20,18 +20,18 @@ xattr -cr /Applications/MiniZoneClock.app
 
 ## ビルドして使う場合（最初の1回）
 
-1. このフォルダ（`mini-zone-clock`）をMacにダウンロードします。
-2. ターミナルを開き、次のコマンドを実行します。
+1. ターミナルを開き、次のコマンドを実行します。
 
    ```
-   cd ~/Downloads/mini-zone-clock
+   git clone https://github.com/yokodona/MiniZoneClock.git
+   cd MiniZoneClock
    bash build.sh
    ```
 
    ※「Swift コンパイラが見つかりません」と出たら、`xcode-select --install` を実行して
      コマンドラインツールを入れてから、もう一度 `bash build.sh` を実行してください。
 
-3. ビルドが終わると `/Applications/MiniZoneClock.app` に入り、自動で起動します。
+2. ビルドが終わると `/Applications/MiniZoneClock.app` に入り、自動で起動します。
 
 ## 使い方
 
@@ -47,4 +47,3 @@ xattr -cr /Applications/MiniZoneClock.app
 ## メモ
 
 - macOS 13 以降、Apple シリコン（M1など）でそのまま動きます（Rosetta 不要）。
-- 古い LoversClock2 と同時に動かせます。並べて見比べて、問題なければ LoversClock2 を終了してください。
